@@ -1,6 +1,7 @@
 from extract_raw import load_tables as extract_raw_data
+from extract_raw import load_tables
 from transform_flatten import create_flattened_observations, incremental_flattened_observations
-from transform_pivot import run_pivoting_transformation
+from transform_pivot import run_pivoting_transformation, run_incremental_pivoting
 
 import dlt
 
@@ -16,36 +17,28 @@ def run_full_pipeline():
     print("Step 2: Creating flattened observations...")
     create_flattened_observations(pipeline)
     
-     # Step 3: Dynamic pivoting (no hardcoded UUIDs)
+     # Step 3: Dynamic pivoting
     print("Step 3: Creating dynamically widened observations...")
     run_pivoting_transformation()
     
-    print("ETL pipeline completed successfully!")
+    print("Full ETL pipeline completed successfully!")
 
 def run_incremental_pipeline(start_date, end_date):
     """Run incremental update"""
     print(f"Starting incremental update from {start_date} to {end_date}...")
     
-    pipeline = dlt.pipeline(
-        pipeline_name="sql_to_duckdb_pipeline",
-        destination="duckdb", 
-        dataset_name="sql_to_duckdb_pipeline_data"
-    )
-    
-    # Update both raw data and flattened observations incrementally
-    from extract_raw import create_source
-    source = create_source()
-    
-    # Incremental extract
-    load_info = pipeline.run(source)
-    print("Incremental extract:", load_info)
-    
-    # Incremental transform
+    # Step 1: Extract raw data incrementally
+    pipeline = load_tables()
+    # Incremental flat observation transform
     incremental_flattened_observations(pipeline, start_date, end_date)
+    # Incremental pivoting transform    
+    run_incremental_pivoting(pipeline, start_date, end_date)
+    
+    print("Incremental ETL pipeline completed successfully!")
 
 if __name__ == '__main__':
     # Run full pipeline
     run_full_pipeline()
     
     # Or run incremental (uncomment to use)
-    # run_incremental_pipeline("2024-01-01", "2024-01-02")
+    run_incremental_pipeline("", "")

@@ -6,12 +6,12 @@ def create_flattened_observations(pipeline):
     # If no pipeline provided, create one
     if pipeline is None:
         pipeline = dlt.pipeline(
-            pipeline_name="sql_to_duckdb_pipeline",
+            pipeline_name="openmrs_etl",
             destination="duckdb",
-            dataset_name="sql_to_duckdb_pipeline_data"
+            dataset_name="openmrs_analytics"
         )
     flatten_sql = """
-    CREATE OR REPLACE TABLE sql_to_duckdb_pipeline_data.flat_observations AS
+    CREATE OR REPLACE TABLE openmrs_analytics.flat_observations AS
     SELECT
         obs.obs_id AS obs_id,
         obs.person_id AS person_id,
@@ -65,23 +65,23 @@ def create_flattened_observations(pipeline):
         location.retired AS location_retired,
         location.uuid AS location_uuid
 
-    FROM sql_to_duckdb_pipeline_data.obs AS obs
-    LEFT JOIN sql_to_duckdb_pipeline_data.concept_name AS value_concept_name
+    FROM openmrs_analytics.obs AS obs
+    LEFT JOIN openmrs_analytics.concept_name AS value_concept_name
         ON obs.value_coded = value_concept_name.concept_id
         AND obs.value_coded IS NOT NULL
         AND value_concept_name.locale_preferred = true
         AND value_concept_name.locale = 'en'
-    LEFT JOIN sql_to_duckdb_pipeline_data.encounter AS encounter
+    LEFT JOIN openmrs_analytics.encounter AS encounter
         ON obs.encounter_id = encounter.encounter_id
-    LEFT JOIN sql_to_duckdb_pipeline_data.visit AS visit
+    LEFT JOIN openmrs_analytics.visit AS visit
         ON encounter.visit_id = visit.visit_id
-    LEFT JOIN sql_to_duckdb_pipeline_data.encounter_type AS encounter_type
+    LEFT JOIN openmrs_analytics.encounter_type AS encounter_type
         ON encounter.encounter_type = encounter_type.encounter_type_id
-    LEFT JOIN sql_to_duckdb_pipeline_data.visit_type AS visit_type
+    LEFT JOIN openmrs_analytics.visit_type AS visit_type
         ON visit.visit_type_id = visit_type.visit_type_id
-    LEFT JOIN sql_to_duckdb_pipeline_data.location AS location
+    LEFT JOIN openmrs_analytics.location AS location
         ON obs.location_id = location.location_id
-    LEFT JOIN sql_to_duckdb_pipeline_data.concept_name AS concept_concept_name
+    LEFT JOIN openmrs_analytics.concept_name AS concept_concept_name
         ON obs.concept_id = concept_concept_name.concept_id
         AND concept_concept_name.locale_preferred = true
         AND concept_concept_name.locale = 'en'
@@ -94,16 +94,48 @@ def create_flattened_observations(pipeline):
     print("Flattened observations table created successfully!")
 
 def incremental_flattened_observations(pipeline, start_date=None, end_date=None):
-    """Update flattened observations incrementally"""
+    """Update flattened observations incrementally - DELETE + INSERT pattern"""
+    if pipeline is None:
+        pipeline = dlt.pipeline(
+            pipeline_name="openmrs_etl",
+            destination="duckdb",
+            dataset_name="openmrs_analytics"
+        )
+    
+        # Check if dates are provided
+    if start_date is None and end_date is None:
+        # No dates provided - get latest data from destination
+        with pipeline.sql_client() as client:
+            result = client.execute_sql("""
+                SELECT MAX(date_created) as last_date 
+                FROM openmrs_analytics.flat_observations
+            """)
+            last_date = result[0][0] if result and result[0][0] else None
+        
+        if last_date:
+            # Incremental update from last date
+            start_date = last_date
+            end_date = None
+            print(f"Auto: Incremental update since last date: {last_date}")
     
     where_clause = ""
     if start_date and end_date:
         where_clause = f"WHERE obs.date_created BETWEEN '{start_date}' AND '{end_date}'"
     elif start_date:
         where_clause = f"WHERE obs.date_created >= '{start_date}'"
+        
+    # First delete existing records for the date range
+    delete_sql = f"""
+    DELETE FROM openmrs_analytics.flat_observations 
+    WHERE obs_id IN (
+        SELECT obs_id FROM openmrs_analytics.obs 
+        {where_clause.replace('obs.date_created', 'date_created')}
+    )
+    """
     
-    incremental_sql = f"""
-    INSERT OR REPLACE INTO sql_to_duckdb_pipeline_data.flat_observations
+    # Then insert new/updated records
+    insert_sql = f"""
+    INSERT INTO openmrs_analytics.flat_observations
     SELECT
         obs.obs_id AS obs_id,
         obs.person_id AS person_id,
@@ -157,23 +189,23 @@ def incremental_flattened_observations(pipeline, start_date=None, end_date=None)
         location.retired AS location_retired,
         location.uuid AS location_uuid
 
-    FROM sql_to_duckdb_pipeline_data.obs AS obs
-    LEFT JOIN sql_to_duckdb_pipeline_data.concept_name AS value_concept_name
+    FROM openmrs_analytics.obs AS obs
+    LEFT JOIN openmrs_analytics.concept_name AS value_concept_name
         ON obs.value_coded = value_concept_name.concept_id
         AND obs.value_coded IS NOT NULL
         AND value_concept_name.locale_preferred = true
         AND value_concept_name.locale = 'en'
-    LEFT JOIN sql_to_duckdb_pipeline_data.encounter AS encounter
+    LEFT JOIN openmrs_analytics.encounter AS encounter
         ON obs.encounter_id = encounter.encounter_id
-    LEFT JOIN sql_to_duckdb_pipeline_data.visit AS visit
+    LEFT JOIN openmrs_analytics.visit AS visit
         ON encounter.visit_id = visit.visit_id
-    LEFT JOIN sql_to_duckdb_pipeline_data.encounter_type AS encounter_type
+    LEFT JOIN openmrs_analytics.encounter_type AS encounter_type
         ON encounter.encounter_type = encounter_type.encounter_type_id
-    LEFT JOIN sql_to_duckdb_pipeline_data.visit_type AS visit_type
+    LEFT JOIN openmrs_analytics.visit_type AS visit_type
         ON visit.visit_type_id = visit_type.visit_type_id
-    LEFT JOIN sql_to_duckdb_pipeline_data.location AS location
+    LEFT JOIN openmrs_analytics.location AS location
         ON obs.location_id = location.location_id
-    LEFT JOIN sql_to_duckdb_pipeline_data.concept_name AS concept_concept_name
+    LEFT JOIN openmrs_analytics.concept_name AS concept_concept_name
         ON obs.concept_id = concept_concept_name.concept_id
         AND concept_concept_name.locale_preferred = true
         AND concept_concept_name.locale = 'en'
@@ -183,15 +215,18 @@ def incremental_flattened_observations(pipeline, start_date=None, end_date=None)
     """
     
     with pipeline.sql_client() as client:
-        client.execute(incremental_sql)
+        client.execute("BEGIN TRANSACTION")
+        client.execute(delete_sql)
+        client.execute(insert_sql)
+        client.execute("COMMIT")
     
     print(f"Incremental update completed for date range: {start_date} to {end_date}")
 
 if __name__ == '__main__':
     # For testing this module independently
     pipeline = dlt.pipeline(
-        pipeline_name="sql_to_duckdb_pipeline",
+        pipeline_name="openmrs_etl",
         destination="duckdb",
-        dataset_name="sql_to_duckdb_pipeline_data"
+        dataset_name="openmrs_analytics"
     )
     create_flattened_observations(pipeline)

@@ -93,10 +93,10 @@ Output (Wide Format)
 View Pipeline Status
 bash
 # Show pipeline information
-dlt pipeline sql_to_duckdb_pipeline show
+dlt pipeline openmrs_etl show
 
 # Check load history
-dlt pipeline sql_to_duckdb_pipeline trace
+dlt pipeline openmrs_etl trace
 Streamlit Dashboard (Optional)
 bash
 # Launch interactive dashboard

@@ -212,9 +212,9 @@ def load_tables():
 
 	# Create a dlt pipeline object
 	pipeline = dlt.pipeline(
-		pipeline_name="sql_to_duckdb_pipeline", # Custom name for the pipeline
+		pipeline_name="openmrs_etl", # Custom name for the pipeline
 		destination="duckdb", # dlt destination to which the data will be loaded
-		dataset_name="sql_to_duckdb_pipeline_data" # Custom name for the dataset created in the destination
+		dataset_name="openmrs_analytics" # Custom name for the dataset created in the destination
 	)
 
 	# Run the pipeline
