@@ -107,20 +107,20 @@ def create_widened_observations():
     # Add base encounter information
     base_columns = [
         "person_id",
-        "encounter_id", 
+        "encounter_id",
         "encounter_type_name",
         "visit_date_started",
-        "location_name",
-        "date_created"
+        "location_name"
     ]
-    
+
     # Build the final query
     pivot_query = f"""
-    SELECT 
+    SELECT
         {', '.join(base_columns)},
+        MAX(date_created) as date_created,
         {', '.join(pivot_columns)}
     FROM openmrs_analytics.flat_observations
-    GROUP BY 
+    GROUP BY
         {', '.join(base_columns)}
     """
 
@@ -130,6 +130,7 @@ def create_widened_observations():
         # Since execute_sql returns a list, we need to manually create column names
         # Get column names by running a similar query with LIMIT 0
         column_names = base_columns.copy()
+        column_names.append('date_created')  # Add date_created after base columns
 
         for col in pivot_columns:
             # Extract column name from "AS \"column_name\""
@@ -247,21 +248,21 @@ def incremental_widened_observations(pipeline, start_date=None, end_date=None):
         # Add base encounter information
         base_columns = [
             "person_id",
-            "encounter_id", 
+            "encounter_id",
             "encounter_type_name",
             "visit_date_started",
-            "location_name",
-            "date_created"
+            "location_name"
         ]
-        
+
         # Build the final query with where clause for incremental data
         pivot_query = f"""
-        SELECT 
+        SELECT
             {', '.join(base_columns)},
+            MAX(date_created) as date_created,
             {', '.join(pivot_columns)}
         FROM openmrs_analytics.flat_observations
         {where_clause}
-        GROUP BY 
+        GROUP BY
             {', '.join(base_columns)}
         """
 
@@ -270,6 +271,7 @@ def incremental_widened_observations(pipeline, start_date=None, end_date=None):
             results = client.execute_sql(pivot_query)
             # Since execute_sql returns a list, we need to manually create column names
             column_names = base_columns.copy()
+            column_names.append('date_created')  # Add date_created after base columns
 
             for col in pivot_columns:
                 # Extract column name from "AS \"column_name\""
