@@ -7,7 +7,7 @@ def create_flattened_observations(pipeline):
     if pipeline is None:
         pipeline = dlt.pipeline(
             pipeline_name="openmrs_etl",
-            destination="duckdb",
+            destination=dlt.destinations.duckdb("/opt/airflow/data/openmrs_etl.duckdb"),
             dataset_name="openmrs_analytics"
         )
     flatten_sql = """
@@ -98,7 +98,7 @@ def incremental_flattened_observations(pipeline, start_date=None, end_date=None)
     if pipeline is None:
         pipeline = dlt.pipeline(
             pipeline_name="openmrs_etl",
-            destination="duckdb",
+            destination=dlt.destinations.duckdb("/opt/airflow/data/openmrs_etl.duckdb"),
             dataset_name="openmrs_analytics"
         )
     
@@ -226,7 +226,7 @@ if __name__ == '__main__':
     # For testing this module independently
     pipeline = dlt.pipeline(
         pipeline_name="openmrs_etl",
-        destination="duckdb",
+        destination=dlt.destinations.duckdb("/opt/airflow/data/openmrs_etl.duckdb"),
         dataset_name="openmrs_analytics"
     )
     create_flattened_observations(pipeline)

@@ -149,7 +149,7 @@ def run_pivoting_transformation():
     """Run the comprehensive pivoting transformation"""
     pipeline = dlt.pipeline(
         pipeline_name="openmrs_etl",
-        destination="duckdb", 
+        destination=dlt.destinations.duckdb("/opt/airflow/data/openmrs_etl.duckdb"),
         dataset_name="openmrs_analytics"
     )
     
@@ -163,7 +163,7 @@ def incremental_widened_observations(pipeline, start_date=None, end_date=None):
     if pipeline is None:
         pipeline = dlt.pipeline(
             pipeline_name="openmrs_etl",
-            destination="duckdb",
+            destination=dlt.destinations.duckdb("/opt/airflow/data/openmrs_etl.duckdb"),
             dataset_name="openmrs_analytics"
         )
     
@@ -295,7 +295,7 @@ def run_incremental_pivoting(pipeline=None, start_date=None, end_date=None):
     if pipeline is None:
         pipeline = dlt.pipeline(
             pipeline_name="openmrs_etl",
-            destination="duckdb", 
+            destination=dlt.destinations.duckdb("/opt/airflow/data/openmrs_etl.duckdb"),
             dataset_name="openmrs_analytics"
         )
     

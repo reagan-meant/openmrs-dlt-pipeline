@@ -2,30 +2,35 @@ import dlt
 from dlt.sources.sql_database import sql_database
 
 def load_tables():
-	"""Extract raw data from SQL database and load into DuckDB using dlt""" 
+	"""Extract raw data from SQL database and load into DuckDB using dlt"""
 	source = sql_database().with_resources(
 		"person",
+		"person_name",
+		"person_address",
+		"person_attribute",
 		"patient",
+		"patient_identifier",
+		"patient_identifier_type",
 		"encounter",
+		"encounter_type",
+		"encounter_provider",
+		"encounter_role",
 		"obs",
 		"visit",
+		"visit_type",
 		"location",
 		"provider",
 		"concept",
 		"concept_name",
+		"concept_answer",
 		"concept_class",
 		"concept_datatype",
 		"concept_set",
-		"encounter_type",
-		"visit_type",
 		"program",
 		"program_workflow",
 		"program_workflow_state",
 		"patient_program",
 		"patient_state",
-		"patient_identifier",
-		"patient_identifier_type",
-		"person_attribute",
 		"orders",
 		"drug",
 		"drug_order",
@@ -36,9 +41,7 @@ def load_tables():
 		"form",
 		"form_field",
 		"form_resource",
-		"global_property",
-		"person_name",
-		"person_address"
+		"global_property"
 	)
 
     # specify different loading strategy for each resource using apply_hints
@@ -46,6 +49,21 @@ def load_tables():
 	source.person.apply_hints(
 		write_disposition="merge",
 		primary_key="person_id",
+		incremental=dlt.sources.incremental("date_created")
+	)
+	source.person_name.apply_hints(
+		write_disposition="merge",
+		primary_key="person_name_id",
+		incremental=dlt.sources.incremental("date_created")
+	)
+	source.person_address.apply_hints(
+		write_disposition="merge",
+		primary_key="person_address_id",
+		incremental=dlt.sources.incremental("date_created")
+	)
+	source.person_attribute.apply_hints(
+		write_disposition="merge",
+		primary_key="person_attribute_id",
 		incremental=dlt.sources.incremental("date_created")
 	)
 	source.patient.apply_hints(
@@ -88,6 +106,11 @@ def load_tables():
 	source.concept_name.apply_hints(
 		write_disposition="merge",
 		primary_key="concept_name_id",
+		incremental=dlt.sources.incremental("date_created")
+	)
+	source.concept_answer.apply_hints(
+		write_disposition="merge",
+		primary_key="concept_answer_id",
 		incremental=dlt.sources.incremental("date_created")
 	)
 	source.concept_class.apply_hints(
@@ -137,15 +160,15 @@ def load_tables():
 	source.patient_program.apply_hints(
 		write_disposition="merge",
 		primary_key="patient_program_id",
-		incremental=dlt.sources.incremental("date_enrolled")
+		incremental=dlt.sources.incremental("date_created")
 	)
 	source.patient_state.apply_hints(
 		write_disposition="merge",
 		primary_key="patient_state_id",
-		incremental=dlt.sources.incremental("start_date")
+		incremental=dlt.sources.incremental("date_created")
 	)
 
-	# Patient identifiers and attributes
+	# Patient identifiers
 	source.patient_identifier.apply_hints(
 		write_disposition="merge",
 		primary_key="patient_identifier_id",
@@ -156,9 +179,16 @@ def load_tables():
 		primary_key="patient_identifier_type_id",
 		incremental=dlt.sources.incremental("date_created")
 	)
-	source.person_attribute.apply_hints(
+
+	# Encounter providers and roles
+	source.encounter_provider.apply_hints(
 		write_disposition="merge",
-		primary_key="person_attribute_id",
+		primary_key="encounter_provider_id",
+		incremental=dlt.sources.incremental("date_created")
+	)
+	source.encounter_role.apply_hints(
+		write_disposition="merge",
+		primary_key="encounter_role_id",
 		incremental=dlt.sources.incremental("date_created")
 	)
 
@@ -173,17 +203,32 @@ def load_tables():
 		primary_key="drug_id",
 		incremental=dlt.sources.incremental("date_created")
 	)
+	source.drug_order.apply_hints(
+		write_disposition="merge",
+		primary_key="order_id"
+		# Note: drug_order is a child table of orders, no date_created column
+	)
 
-	# Relationships and users
+	# Relationships
 	source.relationship.apply_hints(
 		write_disposition="merge",
 		primary_key="relationship_id",
 		incremental=dlt.sources.incremental("date_created")
 	)
+
+	# Users and roles
 	source.users.apply_hints(
 		write_disposition="merge",
 		primary_key="user_id",
 		incremental=dlt.sources.incremental("date_created")
+	)
+	source.user_role.apply_hints(
+		write_disposition="merge",
+		primary_key="user_id"  # Composite key (user_id, role), no timestamp columns
+	)
+	source.role_privilege.apply_hints(
+		write_disposition="merge",
+		primary_key="role"  # Composite key (role, privilege), no timestamp columns
 	)
 
 	# Forms
@@ -197,23 +242,23 @@ def load_tables():
 		primary_key="form_field_id",
 		incremental=dlt.sources.incremental("date_created")
 	)
-
-	# Misc / support tables
-	source.person_name.apply_hints(
+	source.form_resource.apply_hints(
 		write_disposition="merge",
-		primary_key="person_name_id",
-		incremental=dlt.sources.incremental("date_created")
+		primary_key="form_resource_id"
+		# Note: date_changed can be NULL, so we don't use incremental loading
 	)
-	source.person_address.apply_hints(
+
+	# Global properties
+	source.global_property.apply_hints(
 		write_disposition="merge",
-		primary_key="person_address_id",
-		incremental=dlt.sources.incremental("date_created")
+		primary_key="property"
+		# Note: date_changed can be NULL, so we don't use incremental loading for this table
 	)
 
 	# Create a dlt pipeline object
 	pipeline = dlt.pipeline(
 		pipeline_name="openmrs_etl", # Custom name for the pipeline
-		destination="duckdb", # dlt destination to which the data will be loaded
+		destination=dlt.destinations.duckdb("/opt/airflow/data/openmrs_etl.duckdb"),
 		dataset_name="openmrs_analytics" # Custom name for the dataset created in the destination
 	)
 

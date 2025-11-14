@@ -1,4 +1,3 @@
-from extract_raw import load_tables as extract_raw_data
 from extract_raw import load_tables
 from transform_flatten import create_flattened_observations, incremental_flattened_observations
 from transform_pivot import run_pivoting_transformation, run_incremental_pivoting
@@ -8,10 +7,17 @@ import dlt
 def run_full_pipeline():
     """Run the complete ETL pipeline: Extract → Transform"""
     print("Starting full ETL pipeline...")
-    
+
     # Step 1: Extract raw data
     print("Step 1: Extracting raw data...")
-    pipeline = extract_raw_data()
+    load_tables()
+
+    # Create pipeline object to pass to transform functions
+    pipeline = dlt.pipeline(
+        pipeline_name="openmrs_etl",
+        destination=dlt.destinations.duckdb("/opt/airflow/data/openmrs_etl.duckdb"),
+        dataset_name="openmrs_analytics"
+    )
     
     # Step 2: Create flattened observations
     print("Step 2: Creating flattened observations...")
@@ -23,7 +29,7 @@ def run_full_pipeline():
     
     print("Full ETL pipeline completed successfully!")
 
-def run_incremental_pipeline(start_date, end_date):
+def run_incremental_pipeline(start_date=None, end_date=None):
     """Run incremental update"""
     print(f"Starting incremental update from {start_date} to {end_date}...")
     
@@ -41,4 +47,4 @@ if __name__ == '__main__':
     run_full_pipeline()
     
     # Or run incremental (uncomment to use)
-    run_incremental_pipeline("", "")
+    #run_incremental_pipeline("", "")

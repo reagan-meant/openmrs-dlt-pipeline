@@ -1,0 +1,196 @@
+# OpenMRS ETL Pipeline with Airflow
+# Optimized for dlt pipeline with proper initialization and dependencies
+
+services:
+  # OpenMRS MySQL Database
+  openmrs-mysql:
+    image: mysql:8.0
+    container_name: openmrs-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: openmrs
+      MYSQL_USER: openmrs
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-openmrs}
+    volumes:
+      - openmrs-mysql-volume:/var/lib/mysql
+      - ./scripts/openmrs_dump_20251114_125003.sql:/docker-entrypoint-initdb.d/openmrs_dump_20251114_125003.sql
+    ports:
+      - "3307:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uopenmrs", "-popenmrs"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+
+  # Airflow Metadata Database
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data-volume:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  airflow-init:
+    image: apache/airflow:2.7.0
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
+      AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      _AIRFLOW_DB_UPGRADE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_USERNAME:-admin}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_PASSWORD:-admin}
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./dlt:/opt/airflow/dlt
+      - ./airflow/data:/opt/airflow/data
+      - ./dlt/requirements.txt:/opt/airflow/requirements.txt
+    command: >
+      bash -c "
+        echo 'Installing dependencies...' &&
+        pip install --user -r /opt/airflow/requirements.txt &&
+        echo 'Initializing Airflow database...' &&
+        airflow db upgrade &&
+        echo 'Creating admin user...' &&
+        airflow users create \
+          --username ${AIRFLOW_USERNAME:-admin} \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@openmrs.org \
+          --password ${AIRFLOW_PASSWORD:-admin} &&
+        echo 'Initialization complete!'
+      "
+    depends_on:
+      openmrs-mysql:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  airflow-webserver:
+    image: apache/airflow:2.7.0
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
+      AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
+      AIRFLOW__WEBSERVER__BASE_URL: http://localhost:8080
+      AIRFLOW__LOGGING__BASE_LOG_FOLDER: /opt/airflow/logs
+      AIRFLOW__LOGGING__REMOTE_LOGGING: 'false'
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./dlt:/opt/airflow/dlt
+      - ./airflow/data:/opt/airflow/data
+      - ./airflow/logs:/opt/airflow/logs
+      - ./dlt/requirements.txt:/opt/airflow/requirements.txt
+    ports:
+      - "8080:8080"
+    command: >
+      bash -c "
+        pip install --user -r /opt/airflow/requirements.txt &&
+        airflow webserver
+      "
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    depends_on:
+      - postgres
+      - redis
+      - airflow-init
+    restart: unless-stopped
+
+  airflow-scheduler:
+    image: apache/airflow:2.7.0
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
+      AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__LOGGING__BASE_LOG_FOLDER: /opt/airflow/logs
+      AIRFLOW__LOGGING__REMOTE_LOGGING: 'false'
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./dlt:/opt/airflow/dlt
+      - ./airflow/data:/opt/airflow/data
+      - ./airflow/logs:/opt/airflow/logs
+      - ./dlt/requirements.txt:/opt/airflow/requirements.txt
+    command: >
+      bash -c "
+        pip install --user -r /opt/airflow/requirements.txt &&
+        airflow scheduler
+      "
+    depends_on:
+      - postgres
+      - redis
+      - airflow-init
+    restart: unless-stopped
+
+  airflow-worker:
+    image: apache/airflow:2.7.0
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
+      AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__LOGGING__BASE_LOG_FOLDER: /opt/airflow/logs
+      AIRFLOW__LOGGING__REMOTE_LOGGING: 'false'
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./dlt:/opt/airflow/dlt
+      - ./airflow/data:/opt/airflow/data
+      - ./airflow/logs:/opt/airflow/logs
+      - ./dlt/requirements.txt:/opt/airflow/requirements.txt
+    command: >
+      bash -c "
+        pip install --user -r /opt/airflow/requirements.txt &&
+        airflow celery worker
+      "
+    depends_on:
+      - postgres
+      - redis
+      - airflow-init
+    restart: unless-stopped
+
+volumes:
+  openmrs-mysql-volume:
+  postgres-db-volume:
+  redis-data-volume:
