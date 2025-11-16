@@ -11,7 +11,7 @@ def create_flattened_observations(pipeline):
             dataset_name="openmrs_analytics"
         )
     flatten_sql = """
-    CREATE OR REPLACE TABLE openmrs_analytics.flat_observations AS
+    CREATE OR REPLACE TABLE openmrs_analytics.flattened_observations AS
     SELECT
         obs.obs_id AS obs_id,
         obs.person_id AS person_id,
@@ -108,7 +108,7 @@ def incremental_flattened_observations(pipeline, start_date=None, end_date=None)
         with pipeline.sql_client() as client:
             result = client.execute_sql("""
                 SELECT MAX(date_created) as last_date 
-                FROM openmrs_analytics.flat_observations
+                FROM openmrs_analytics.flattened_observations
             """)
             last_date = result[0][0] if result and result[0][0] else None
         
@@ -126,7 +126,7 @@ def incremental_flattened_observations(pipeline, start_date=None, end_date=None)
         
     # First delete existing records for the date range
     delete_sql = f"""
-    DELETE FROM openmrs_analytics.flat_observations 
+    DELETE FROM openmrs_analytics.flattened_observations 
     WHERE obs_id IN (
         SELECT obs_id FROM openmrs_analytics.obs 
         {where_clause.replace('obs.date_created', 'date_created')}
@@ -135,7 +135,7 @@ def incremental_flattened_observations(pipeline, start_date=None, end_date=None)
     
     # Then insert new/updated records
     insert_sql = f"""
-    INSERT INTO openmrs_analytics.flat_observations
+    INSERT INTO openmrs_analytics.flattened_observations
     SELECT
         obs.obs_id AS obs_id,
         obs.person_id AS person_id,

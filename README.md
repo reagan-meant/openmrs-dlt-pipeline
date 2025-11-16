@@ -43,7 +43,7 @@ This pipeline extracts data from OpenMRS (Open Medical Records System), flattens
                     │  visits, locations)          │
                     └──────────────┬───────────────┘
                                    │
-                                   │ Create flat_observations
+                                   │ Create flattened_observations
                                    ▼
                     ┌──────────────────────────────┐
                     │   Flattened Table            │
@@ -405,7 +405,7 @@ Extracts 35+ tables from OpenMRS MySQL database:
 
 ### Step 2: Flatten Observations (`transform_flatten.py`)
 
-Creates `flat_observations` table by joining observations with metadata:
+Creates `flattened_observations` table by joining observations with metadata:
 
 **Joins:**
 - Concept names (preferred English locale)
@@ -522,14 +522,14 @@ Apache Superset is included in the Docker deployment for creating dashboards and
    - Select your DuckDB database
    - Query the widened observations:
    ```sql
-   SELECT * FROM openmrs_analytics.observations_widened LIMIT 100;
+   SELECT * FROM openmrs_analytics.widened_observations LIMIT 100;
    ```
 
 2. **Create a Dataset:**
    - Go to **Datasets** → **+ Dataset**
    - Select Database: `DuckDB`
    - Select Schema: `openmrs_analytics`
-   - Select Table: `observations_widened` or `flat_observations`
+   - Select Table: `widened_observations` or `flattened_observations`
    - Click **Create Dataset and Create Chart**
 
 3. **Build Charts:**
@@ -721,7 +721,7 @@ docker compose exec airflow-worker pip list | grep dlt
 ### Data Quality Issues
 
 **Missing columns in wide table:**
-- Check if concepts exist in `flat_observations`
+- Check if concepts exist in `flattened_observations`
 - Verify value types are correctly mapped
 - Run full refresh to rebuild schema
 

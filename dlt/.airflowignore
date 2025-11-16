@@ -1,0 +1,11 @@
+# Airflow will ignore these patterns when scanning for DAGs
+# Uses regex patterns (not glob)
+# Only main.py should be scanned as it contains the DAG definitions
+\.venv/
+__pycache__/
+\.dlt/
+.*\.pyc$
+\.git/
+README\.md
+requirements\.txt
+pipeline/

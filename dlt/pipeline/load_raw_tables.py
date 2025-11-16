@@ -41,7 +41,13 @@ def load_tables():
 		"form",
 		"form_field",
 		"form_resource",
-		"global_property"
+		"global_property",
+		"patient_appointment",
+		"appointment_service",
+		"appointment_service_type",
+		"appointment_service_weekly_availability",
+		"appointment_speciality",
+		"patient_appointment_provider"
 	)
 
     # specify different loading strategy for each resource using apply_hints
@@ -253,6 +259,38 @@ def load_tables():
 		write_disposition="merge",
 		primary_key="property"
 		# Note: date_changed can be NULL, so we don't use incremental loading for this table
+	)
+
+	# Appointments
+	source.patient_appointment.apply_hints(
+		write_disposition="merge",
+		primary_key="patient_appointment_id",
+		incremental=dlt.sources.incremental("date_created")
+	)
+	source.appointment_service.apply_hints(
+		write_disposition="merge",
+		primary_key="appointment_service_id",
+		incremental=dlt.sources.incremental("date_created")
+	)
+	source.appointment_service_type.apply_hints(
+		write_disposition="merge",
+		primary_key="appointment_service_type_id",
+		incremental=dlt.sources.incremental("date_created")
+	)
+	source.appointment_service_weekly_availability.apply_hints(
+		write_disposition="merge",
+		primary_key="service_weekly_availability_id",
+		incremental=dlt.sources.incremental("date_created")
+	)
+	source.appointment_speciality.apply_hints(
+		write_disposition="merge",
+		primary_key="speciality_id",
+		incremental=dlt.sources.incremental("date_created")
+	)
+	source.patient_appointment_provider.apply_hints(
+		write_disposition="merge",
+		primary_key="patient_appointment_provider_id",
+		incremental=dlt.sources.incremental("date_created")
 	)
 
 	# Create a dlt pipeline object

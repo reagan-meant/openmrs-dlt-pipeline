@@ -1,50 +1,102 @@
-from extract_raw import load_tables
-from transform_flatten import create_flattened_observations, incremental_flattened_observations
-from transform_pivot import run_pivoting_transformation, run_incremental_pivoting
+from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from airflow.operators.dummy import DummyOperator
+import os
 
-import dlt
+# Change working directory to dlt folder so .dlt config can be found
+# This is required for dlt to locate the .dlt/ configuration directory
+os.chdir('/opt/airflow/dlt')
 
-def run_full_pipeline():
-    """Run the complete ETL pipeline: Extract → Transform"""
-    print("Starting full ETL pipeline...")
+from pipeline.pipeline_runner import run_full_pipeline
+from pipeline.transform_pivot import incremental_widened_observations
 
-    # Step 1: Extract raw data
-    print("Step 1: Extracting raw data...")
-    load_tables()
+default_args = {
+    'owner': 'openmrs',
+    'depends_on_past': False,
+    'start_date': datetime(2024, 1, 1),
+    'email_on_failure': False,
+    'email_on_retry': False,
+    'retries': 1,
+    'retry_delay': timedelta(minutes=5),
+}
 
-    # Create pipeline object to pass to transform functions
-    pipeline = dlt.pipeline(
-        pipeline_name="openmrs_etl",
-        destination=dlt.destinations.duckdb("/opt/airflow/data/openmrs_etl.duckdb"),
-        dataset_name="openmrs_analytics"
-    )
-    
-    # Step 2: Create flattened observations
-    print("Step 2: Creating flattened observations...")
-    create_flattened_observations(pipeline)
-    
-     # Step 3: Dynamic pivoting
-    print("Step 3: Creating dynamically widened observations...")
-    run_pivoting_transformation()
-    
-    print("Full ETL pipeline completed successfully!")
+def run_incremental_etl():
+    """Wrapper for incremental updates - runs full pipeline on first run"""
+    import duckdb
+    import os
 
-def run_incremental_pipeline(start_date=None, end_date=None):
-    """Run incremental update"""
-    print(f"Starting incremental update from {start_date} to {end_date}...")
-    
-    # Step 1: Extract raw data incrementally
-    pipeline = load_tables()
-    # Incremental flat observation transform
-    incremental_flattened_observations(pipeline, start_date, end_date)
-    # Incremental pivoting transform    
-    run_incremental_pivoting(pipeline, start_date, end_date)
-    
-    print("Incremental ETL pipeline completed successfully!")
+    # Check if this is the first run by seeing if the database exists
+    db_path = "/opt/airflow/data/openmrs_etl.duckdb"
+    is_first_run = not os.path.exists(db_path)
 
-if __name__ == '__main__':
-    # Run full pipeline
+    if is_first_run:
+        print("First run detected - running full ETL pipeline...")
+        run_full_pipeline()
+    else:
+        # Check if flattened_observations table exists
+        try:
+            conn = duckdb.connect(db_path)
+            conn.execute("SELECT 1 FROM openmrs_analytics.flattened_observations LIMIT 1")
+            conn.close()
+            print("Tables exist - running incremental update...")
+            pipeline = None  # Let the function create its own pipeline
+            incremental_widened_observations(pipeline)
+        except Exception as e:
+            print(f"Tables don't exist - running full ETL pipeline: {e}")
+            run_full_pipeline()
+
+def run_full_etl():
+    """Force full pipeline execution - useful for reprocessing or schema changes"""
+    print("Force running full ETL pipeline...")
     run_full_pipeline()
-    
-    # Or run incremental (uncomment to use)
-    #run_incremental_pipeline("", "")
+
+# =====================================================
+# DAG 1: Incremental ETL Pipeline (Scheduled)
+# =====================================================
+with DAG(
+    'openmrs_etl_incremental',
+    default_args=default_args,
+    description='OpenMRS Incremental ETL Pipeline - Auto-detects first run',
+    schedule_interval=timedelta(hours=1),
+    catchup=False,
+    tags=['openmrs', 'etl', 'healthcare', 'incremental'],
+) as incremental_dag:
+
+    start = DummyOperator(task_id='start')
+
+    # Run incremental updates (will handle both initial load and updates)
+    incremental_etl = PythonOperator(
+        task_id='incremental_etl_update',
+        python_callable=run_incremental_etl,
+    )
+
+    end = DummyOperator(task_id='end')
+
+    # Workflow: incremental updates (handles both initial and incremental)
+    start >> incremental_etl >> end
+
+# =====================================================
+# DAG 2: Full ETL Pipeline (Manual Trigger Only)
+# =====================================================
+with DAG(
+    'openmrs_etl_full_reload',
+    default_args=default_args,
+    description='OpenMRS Full ETL Pipeline - Complete data reload (manual trigger only)',
+    schedule_interval=None,  # Manual trigger only
+    catchup=False,
+    tags=['openmrs', 'etl', 'healthcare', 'full-reload'],
+) as full_dag:
+
+    start_full = DummyOperator(task_id='start')
+
+    # Always run full pipeline
+    full_etl = PythonOperator(
+        task_id='full_etl_reload',
+        python_callable=run_full_etl,
+    )
+
+    end_full = DummyOperator(task_id='end')
+
+    # Workflow: full reload
+    start_full >> full_etl >> end_full

@@ -37,10 +37,10 @@ def run_incremental_etl():
         print("First run detected - running full ETL pipeline...")
         run_full_pipeline()
     else:
-        # Check if flat_observations table exists
+        # Check if flattened_observations table exists
         try:
             conn = duckdb.connect(db_path)
-            conn.execute("SELECT 1 FROM openmrs_analytics.flat_observations LIMIT 1")
+            conn.execute("SELECT 1 FROM openmrs_analytics.flattened_observations LIMIT 1")
             conn.close()
             print("Tables exist - running incremental update...")
             pipeline = None  # Let the function create its own pipeline

@@ -67,9 +67,10 @@ services:
       _AIRFLOW_WWW_USER_CREATE: 'true'
       _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_USERNAME:-admin}
       _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_PASSWORD:-admin}
-      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dlt
+      AIRFLOW__SCHEDULER__IGNORE_FIRST_DEPENDS_ON_PAST: 'true'
+      AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: 30
     volumes:
-      - ./airflow/dags:/opt/airflow/dags
       - ./dlt:/opt/airflow/dlt
       - ./airflow/data:/opt/airflow/data
       - ./dlt/requirements.txt:/opt/airflow/requirements.txt
@@ -106,13 +107,12 @@ services:
       AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
-      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dlt
       AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
       AIRFLOW__WEBSERVER__BASE_URL: http://localhost:8080
       AIRFLOW__LOGGING__BASE_LOG_FOLDER: /opt/airflow/logs
       AIRFLOW__LOGGING__REMOTE_LOGGING: 'false'
     volumes:
-      - ./airflow/dags:/opt/airflow/dags
       - ./dlt:/opt/airflow/dlt
       - ./airflow/data:/opt/airflow/data
       - ./airflow/logs:/opt/airflow/logs
@@ -143,11 +143,10 @@ services:
       AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
       AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dlt
       AIRFLOW__LOGGING__BASE_LOG_FOLDER: /opt/airflow/logs
       AIRFLOW__LOGGING__REMOTE_LOGGING: 'false'
     volumes:
-      - ./airflow/dags:/opt/airflow/dags
       - ./dlt:/opt/airflow/dlt
       - ./airflow/data:/opt/airflow/data
       - ./airflow/logs:/opt/airflow/logs
@@ -171,11 +170,10 @@ services:
       AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
       AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dlt
       AIRFLOW__LOGGING__BASE_LOG_FOLDER: /opt/airflow/logs
       AIRFLOW__LOGGING__REMOTE_LOGGING: 'false'
     volumes:
-      - ./airflow/dags:/opt/airflow/dags
       - ./dlt:/opt/airflow/dlt
       - ./airflow/data:/opt/airflow/data
       - ./airflow/logs:/opt/airflow/logs
@@ -195,7 +193,7 @@ services:
   superset:
     build:
       context: .
-      dockerfile: Dockerfile.superset
+      dockerfile: superset/Dockerfile.superset
     image: openmrs-superset:latest
     container_name: superset
     environment:
@@ -209,7 +207,6 @@ services:
       SUPERSET_LOAD_EXAMPLES: 'no'
     volumes:
       - ./airflow/data:/app/data
-      #- ./dlt:/app/dlt
       - ./superset:/app/superset_home
       - ./scripts/superset_init.sh:/app/docker/docker-init.sh
     ports:
