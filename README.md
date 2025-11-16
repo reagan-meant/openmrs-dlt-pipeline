@@ -183,10 +183,12 @@ docker compose up -d
 
 This will start:
 - **OpenMRS MySQL Database** (http://localhost:3307) - Pre-loaded with sample data
-- Airflow Webserver (http://localhost:8080)
+- **Airflow Webserver** (http://localhost:8080) - ETL orchestration
+- **Apache Superset** (http://localhost:8088) - Data visualization and dashboards
 - Airflow Scheduler
 - Celery Worker
 - PostgreSQL (Airflow metadata)
+- PostgreSQL (Superset metadata)
 - Redis (Celery broker)
 
 **Initial startup takes 2-3 minutes** as the MySQL database initializes with the OpenMRS schema and sample clinical data.
@@ -474,6 +476,136 @@ start >> incremental_etl >> end
 
 # To:
 start >> full_etl >> end
+```
+
+## Data Visualization with Apache Superset
+
+Apache Superset is included in the Docker deployment for creating dashboards and visualizations from your transformed OpenMRS data.
+
+### Accessing Superset
+
+1. **Access Superset UI:**
+   - URL: http://localhost:8088
+   - Username: `admin` (default)
+   - Password: `admin` (default)
+
+   To customize credentials, set environment variables in `.env`:
+   ```bash
+   SUPERSET_ADMIN_USERNAME=myuser
+   SUPERSET_ADMIN_PASSWORD=mypassword
+   ```
+
+2. **First Time Setup - Connect to DuckDB:**
+
+   Once logged in, you need to connect Superset to your DuckDB database:
+
+   a. Click **Settings** → **Database Connections** → **+ Database**
+
+   b. Select **Other** as the database type
+
+   c. Enter the following SQLAlchemy URI:
+   ```
+   duckdb:////app/data/openmrs_etl.duckdb
+   ```
+
+   d. Test the connection and click **Connect**
+
+   e. In the database settings, enable:
+      - **Allow DML** (for queries)
+      - **Allow file uploads** (optional)
+      - **Expose in SQL Lab**
+
+### Creating Your First Dashboard
+
+1. **Explore the Data:**
+   - Go to **SQL Lab** → **SQL Editor**
+   - Select your DuckDB database
+   - Query the widened observations:
+   ```sql
+   SELECT * FROM openmrs_analytics.observations_widened LIMIT 100;
+   ```
+
+2. **Create a Dataset:**
+   - Go to **Datasets** → **+ Dataset**
+   - Select Database: `DuckDB`
+   - Select Schema: `openmrs_analytics`
+   - Select Table: `observations_widened` or `flat_observations`
+   - Click **Create Dataset and Create Chart**
+
+3. **Build Charts:**
+
+   **Example: Patient Vital Signs Trends**
+   - Chart Type: **Line Chart**
+   - Time Column: `visit_date_started`
+   - Metrics: `AVG(weight_kg_value)`, `AVG(systolic_blood_pressure_value)`
+   - Dimensions: `person_id`
+
+   **Example: Encounter Type Distribution**
+   - Chart Type: **Pie Chart**
+   - Metric: `COUNT(*)`
+   - Group By: `encounter_type_name`
+
+   **Example: Lab Results by Location**
+   - Chart Type: **Bar Chart**
+   - Metrics: `COUNT(*)`
+   - Group By: `location_name`
+   - Filter: `encounter_type_name = 'Lab Results'`
+
+4. **Create a Dashboard:**
+   - Go to **Dashboards** → **+ Dashboard**
+   - Add your charts by clicking **Edit Dashboard** → **+** button
+   - Arrange and resize charts
+   - Add filters for interactive exploration
+   - Save your dashboard
+
+### Sample Dashboard Ideas
+
+**Clinical Overview Dashboard:**
+- Total patients, encounters, and observations
+- Encounters by type (pie chart)
+- Recent vitals trends (line chart)
+- Top locations by visit volume (bar chart)
+
+**Patient Monitoring Dashboard:**
+- Weight trends over time
+- Blood pressure monitoring
+- Lab result history
+- Visit frequency by patient
+
+**Operational Dashboard:**
+- Daily encounter volume
+- Encounter types by location
+- Provider productivity metrics
+- Data quality metrics (missing values, etc.)
+
+### Superset Features
+
+- **SQL Lab:** Interactive SQL editor with autocomplete
+- **Chart Builder:** 50+ visualization types
+- **Dashboards:** Interactive, filterable dashboards
+- **Alerts & Reports:** Schedule email reports
+- **Row-Level Security:** Control data access by user
+- **Caching:** Fast query performance
+
+### Troubleshooting Superset
+
+**Cannot connect to DuckDB:**
+- Ensure the path `/app/data/openmrs_etl.duckdb` is correct
+- Check that the DuckDB file exists: `docker exec superset ls -la /app/data/`
+- Verify Superset has read permissions
+
+**Charts not updating:**
+- Clear Superset cache: **Data** → **Databases** → click database → **Clear Cache**
+- Refresh your dataset metadata
+- Check that the Airflow DAG has run successfully
+
+**Container fails to start:**
+```bash
+# Check Superset logs
+docker compose logs superset
+
+# Restart Superset
+docker compose restart superset
 ```
 
 ## Monitoring

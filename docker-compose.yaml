@@ -25,7 +25,7 @@ services:
     restart: unless-stopped
     command: --default-authentication-plugin=mysql_native_password
 
-  # Airflow Metadata Database
+  # Shared Postgres Database (for Airflow and Superset)
   postgres:
     image: postgres:13
     environment:
@@ -34,6 +34,7 @@ services:
       POSTGRES_DB: airflow
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
+      - ./scripts/init-superset-db.sh:/docker-entrypoint-initdb.d/init-superset-db.sh
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "airflow"]
       interval: 10s
@@ -189,6 +190,48 @@ services:
       - redis
       - airflow-init
     restart: unless-stopped
+
+  # Apache Superset for Data Visualization
+  superset:
+    build:
+      context: .
+      dockerfile: Dockerfile.superset
+    image: openmrs-superset:latest
+    container_name: superset
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-thisISaSECRET_1234changeMeChangeMe}
+      DATABASE_DB: superset
+      DATABASE_HOST: postgres
+      DATABASE_PASSWORD: superset
+      DATABASE_USER: superset
+      DATABASE_PORT: 5432
+      DATABASE_DIALECT: postgresql
+      SUPERSET_LOAD_EXAMPLES: 'no'
+    volumes:
+      - ./airflow/data:/app/data
+      #- ./dlt:/app/dlt
+      - ./superset:/app/superset_home
+      - ./scripts/superset_init.sh:/app/docker/docker-init.sh
+    ports:
+      - "8088:8088"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    command:
+      - bash
+      - -c
+      - |
+        superset db upgrade
+        superset fab create-admin --username $${SUPERSET_ADMIN_USERNAME:-admin} --firstname Admin --lastname User --email admin@superset.com --password $${SUPERSET_ADMIN_PASSWORD:-admin} || true
+        superset init
+        gunicorn --bind 0.0.0.0:8088 --workers 4 --worker-class gthread --threads 20 --timeout 120 --limit-request-line 0 --limit-request-field_size 0 'superset.app:create_app()'
 
 volumes:
   openmrs-mysql-volume:

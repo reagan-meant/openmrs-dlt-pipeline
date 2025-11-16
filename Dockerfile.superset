@@ -1,0 +1,10 @@
+FROM apache/superset:latest
+
+USER root
+
+# Install duckdb-engine for connecting to DuckDB databases
+# Important: don't upgrade SQLAlchemy as it will break Superset
+# Install without dependencies first, then install only the ones we need
+RUN /usr/local/bin/python3 -m pip install --target=/app/.venv/lib/python3.10/site-packages --no-deps duckdb-engine duckdb
+
+USER superset
