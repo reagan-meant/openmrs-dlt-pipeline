@@ -505,7 +505,7 @@ Apache Superset is included in the Docker deployment for creating dashboards and
 
    c. Enter the following SQLAlchemy URI:
    ```
-   duckdb:////app/data/openmrs_etl.duckdb
+   duckdb:////app/data/openmrs_etl.duckdb?access_mode=READ_ONLY
    ```
 
    d. Test the connection and click **Connect**
