@@ -1,8 +1,12 @@
+"""
+Observations transformation - flatten observations with related metadata
+"""
 import dlt
+
 
 def create_flattened_observations(pipeline):
     """Create flattened observations table from raw data"""
-    
+
     # If no pipeline provided, create one
     if pipeline is None:
         pipeline = dlt.pipeline(
@@ -88,10 +92,11 @@ def create_flattened_observations(pipeline):
     WHERE obs.voided = 0
       AND encounter.voided = 0
     """
-    
+
     with pipeline.sql_client() as client:
         client.execute(flatten_sql)
     print("Flattened observations table created successfully!")
+
 
 def incremental_flattened_observations(pipeline, start_date=None, end_date=None):
     """Update flattened observations incrementally - DELETE + INSERT pattern"""
@@ -101,38 +106,38 @@ def incremental_flattened_observations(pipeline, start_date=None, end_date=None)
             destination=dlt.destinations.duckdb("/opt/airflow/data/openmrs_etl.duckdb"),
             dataset_name="openmrs_analytics"
         )
-    
-        # Check if dates are provided
+
+    # Check if dates are provided
     if start_date is None and end_date is None:
         # No dates provided - get latest data from destination
         with pipeline.sql_client() as client:
             result = client.execute_sql("""
-                SELECT MAX(date_created) as last_date 
+                SELECT MAX(date_created) as last_date
                 FROM openmrs_analytics.flattened_observations
             """)
             last_date = result[0][0] if result and result[0][0] else None
-        
+
         if last_date:
             # Incremental update from last date
             start_date = last_date
             end_date = None
             print(f"Auto: Incremental update since last date: {last_date}")
-    
+
     where_clause = ""
     if start_date and end_date:
         where_clause = f"WHERE obs.date_created BETWEEN '{start_date}' AND '{end_date}'"
     elif start_date:
         where_clause = f"WHERE obs.date_created >= '{start_date}'"
-        
+
     # First delete existing records for the date range
     delete_sql = f"""
-    DELETE FROM openmrs_analytics.flattened_observations 
+    DELETE FROM openmrs_analytics.flattened_observations
     WHERE obs_id IN (
-        SELECT obs_id FROM openmrs_analytics.obs 
+        SELECT obs_id FROM openmrs_analytics.obs
         {where_clause.replace('obs.date_created', 'date_created')}
     )
     """
-    
+
     # Then insert new/updated records
     insert_sql = f"""
     INSERT INTO openmrs_analytics.flattened_observations
@@ -213,20 +218,11 @@ def incremental_flattened_observations(pipeline, start_date=None, end_date=None)
     AND obs.voided = 0
     AND encounter.voided = 0
     """
-    
+
     with pipeline.sql_client() as client:
         client.execute("BEGIN TRANSACTION")
         client.execute(delete_sql)
         client.execute(insert_sql)
         client.execute("COMMIT")
-    
-    print(f"Incremental update completed for date range: {start_date} to {end_date}")
 
-if __name__ == '__main__':
-    # For testing this module independently
-    pipeline = dlt.pipeline(
-        pipeline_name="openmrs_etl",
-        destination=dlt.destinations.duckdb("/opt/airflow/data/openmrs_etl.duckdb"),
-        dataset_name="openmrs_analytics"
-    )
-    create_flattened_observations(pipeline)
+    print(f"Incremental update completed for date range: {start_date} to {end_date}")
